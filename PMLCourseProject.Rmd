@@ -1,0 +1,97 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Practical Machine Learning
+#### Felix Martinez
+#### February 2018
+
+**1 - Project Overview**  
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of this project is to predict the manner in which they did the exercise (the "classe" variable in the training set) using any of the other variables available.
+
+The data is available <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>.
+
+**2 - Approach**
+
+First, we will load the necessary packages and download the data. You will notice that I am cleaning columns with NA values as well as the 5 columns from the data. These first 5 fields are general identifiers such as row number, user names, and timestamps, all of which lack any predictive power and could potentially interfere with my model's performance. I am also downloading the dataset that will then be used for the class test.
+
+```{r loadpackages, message = FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+#Remove columns with NA and first 5 columns
+training <- read.csv(url(trainurl), na.strings=c("NA","#DIV/0!",""))
+training <- training[, colSums(is.na(training)) == 0]
+training <- training[, -c(1:5)]
+
+#Load the data set that will be used for the course test
+classtest <- read.csv(url(testurl), na.strings=c("NA","#DIV/0!",""))
+classtest <- classtest[, colSums(is.na(classtest)) == 0]
+```
+
+It is important that we split our training set into a training set and testing test, so I will split it into a 65-35 partition using the code below
+
+```{r split}
+set.seed(1234)
+
+#Create cross validation data sets
+inTrain <- createDataPartition(y=training$classe,p=.65,list=F)
+trainset <- training[inTrain,]
+testset <- training[-inTrain,]
+dim(trainset)
+```
+
+Our dataset, ready for analysis, will have 55 columns and 12757 rows.
+
+**3 - Prediction Algorithms**
+
+The first predictive model we will use is **Decision Trees** using the code below
+
+```{r decisiontreetrain}
+DecTre <- rpart(classe ~ ., data=trainset, method="class")
+fancyRpartPlot(DecTre)
+```
+
+With the model prepared, we can then evaluate its performance using a confusion matrix.
+
+```{r decisiontreepred}
+DecTrePred <- predict(DecTre, testset, type = "class")
+## Crossvalidate with test set
+confusionMatrix(DecTrePred, testset$classe)
+```
+
+My Decisiont Tree model has an accuracy of 78.7%, not bad! Can we do better with **Random Forests**, let's find out.
+
+```{r ranfortrain}
+## Step 1 Build the Model
+RanFor <- randomForest(classe ~. , data=trainset)
+## Apply on the test set
+RanForPred<- predict(RanFor, testset, type = "class")
+confusionMatrix(RanForPred, testset$classe)
+```
+
+My **Random Forest** model has a 99.6% accuracy, so it is clearly superior to the decision tree 
+
+**4 - Applying Model To Class Test**
+
+I've created a prediction models using Decision Trees and Random Forests, and using our cross validation sets I learned that they have an accuracy of 78.7% and 99.6% respectively. I will now use the Random Forest model to predict my answers for the questions on the test.
+
+```{r predicttest}
+#Random Forests has a quirk in which I have to make sure that the levels on my data have to match the levels of my training models.
+common <- intersect(names(trainset), names(classtest)) 
+for (p in common) { 
+  if (class(trainset[[p]]) == "factor") { 
+    levels(classtest[[p]]) <- levels(trainset[[p]]) 
+  } 
+}
+#Now we predict using the class test data
+predictTEST <- predict(RanFor, newdata=classtest, type = "class")
+predictTEST
+```
+
